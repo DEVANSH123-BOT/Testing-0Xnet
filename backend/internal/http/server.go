@@ -101,7 +101,7 @@ func (s *Server) Start() {
 		json.NewEncoder(w).Encode(append([]*discovery.DiscoveredDevice{meHashed}, hashedDevices...))
 	})
 
-	// Register device via HTTP (useful for browser clients)
+	// Register device via HTTP (useful for browser clients or manual IP entry)
 	http.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -110,6 +110,8 @@ func (s *Server) Start() {
 
 		var body struct {
 			DeviceID string `json:"device_id"`
+			Address  string `json:"address"`
+			Port     int    `json:"port"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid body", http.StatusBadRequest)
@@ -121,11 +123,27 @@ func (s *Server) Start() {
 			return
 		}
 
-		// register on discovery
-		s.sessionDiscovery.RegisterDevice(body.DeviceID, r.RemoteAddr, 0)
+		addr := body.Address
+		if addr == "" {
+			// Extract IP from RemoteAddr
+			host, _, err := net.SplitHostPort(r.RemoteAddr)
+			if err == nil {
+				addr = host
+			} else {
+				addr = r.RemoteAddr
+			}
+		}
+
+		p := body.Port
+		if p <= 0 {
+			p = s.port // Default to same port as us
+		}
+
+		// Register on discovery
+		s.sessionDiscovery.RegisterDevice(body.DeviceID, addr, p)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "registered_as": fmt.Sprintf("%s:%d", addr, p)})
 	})
 
 	// Returns this device's current ID (used by other devices to filter stale sessions)

@@ -819,3 +819,67 @@ button {
 .side-panel::-webkit-scrollbar-thumb:hover {
   background: rgba(156, 144, 170, 0.35);
 }
+
+/* Devices in Side Panel */
+.devices-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.device-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(156, 144, 170, 0.1);
+  border-radius: 12px;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.device-item:hover {
+  background: rgba(168, 138, 255, 0.1);
+  border-color: rgba(168, 138, 255, 0.3);
+}
+
+.device-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.device-id-tag {
+  font-size: 0.65rem;
+  color: var(--c-muted);
+  font-family: monospace;
+}
+
+.device-addr {
+  font-weight: 600;
+  color: var(--c-light);
+}
+
+.call-peer-btn {
+  background: rgba(168, 138, 255, 0.2);
+  border: 1px solid rgba(168, 138, 255, 0.4);
+  color: white;
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.call-peer-btn:hover {
+  background: var(--c-accent);
+  transform: scale(1.05);
+}
+
+.manual-connect {
+  display: flex;
+  flex-direction: column;
+}

@@ -38,6 +38,13 @@ interface SessionData {
   devices: number
   status: 'active' | 'idle'
   members?: number
+  host?: string
+}
+
+interface DiscoveredDevice {
+  device_id: string
+  address: string
+  port: number
 }
 
 function MainContent({ sessions, onJoin, onCreateClicked }: { sessions: SessionData[], onJoin: (session: SessionData) => void, onCreateClicked: () => void }) {
@@ -100,11 +107,19 @@ function MainContent({ sessions, onJoin, onCreateClicked }: { sessions: SessionD
   )
 }
 
-function SidePanel({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+function SidePanel({ isOpen, onClose, devices, onConnectIP, myDeviceID }: { isOpen: boolean; onClose: () => void; devices: DiscoveredDevice[]; onConnectIP: (ip: string) => void; myDeviceID: string }) {
   const [username, setUsername] = useState('User')
+  const [manualIP, setManualIP] = useState('')
 
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase()
+  }
+
+  const handleManualConnect = () => {
+    if (manualIP.trim()) {
+      onConnectIP(manualIP.trim())
+      setManualIP('')
+    }
   }
 
   return (
@@ -112,7 +127,7 @@ function SidePanel({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }
       <div className={`panel-overlay ${isOpen ? 'active' : ''}`} onClick={onClose} />
       <aside className={`side-panel ${isOpen ? 'open' : ''}`}>
         <div className="panel-header">
-          <h2 className="panel-title">Menu</h2>
+          <h2 className="panel-title">Network Menu</h2>
           <button className="close-btn" onClick={onClose}>✕</button>
         </div>
 
@@ -137,29 +152,61 @@ function SidePanel({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }
             </div>
             <div className="profile-item">
               <label className="profile-label">DEVICE ID</label>
-              <input type="text" className="profile-input" value="0X-416V-D3AJ" readOnly />
-            </div>
-            <div className="profile-item">
-              <label className="profile-label">LAN ADDRESS</label>
-              <input type="text" className="profile-input" value="192.168.4.130" readOnly />
+              <input type="text" className="profile-input" value={myDeviceID} readOnly />
             </div>
             <button className="save-btn">Save Profile</button>
           </div>
 
           <div className="panel-section">
-            <h3 className="panel-section-title">NAVIGATION</h3>
+            <h3 className="panel-section-title">DISCOVERED PEERS</h3>
+            <div className="devices-list">
+              {devices.length === 0 && (
+                <p style={{ fontSize: '0.8rem', opacity: 0.5, textAlign: 'center' }}>Sweeping subnet for peers...</p>
+              )}
+              {devices.map((device, idx) => (
+                <div key={idx} className="device-item">
+                  <div className="device-info">
+                    <span className="device-addr">{device.address || 'Local'}</span>
+                    <span className="device-id-tag">{device.device_id.slice(0, 15)}...</span>
+                  </div>
+                  {!device.device_id.includes('(Me)') && (
+                    <button className="call-peer-btn" onClick={() => onConnectIP(device.address)}>
+                      Sync
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="panel-section">
+            <h3 className="panel-section-title">CONNECT BY IP</h3>
+            <div className="manual-connect">
+              <input 
+                type="text" 
+                className="profile-input" 
+                placeholder="e.g. 192.168.1.15" 
+                value={manualIP}
+                onChange={(e) => setManualIP(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleManualConnect()}
+              />
+              <button className="save-btn" style={{ marginTop: '0.8rem' }} onClick={handleManualConnect}>
+                Connect to Device
+              </button>
+            </div>
+          </div>
+
+          <div className="panel-section">
+            <h3 className="panel-section-title">SYSTEM</h3>
             <div className="nav-buttons">
               <button className="nav-btn" onClick={() => console.log('Navigate to Settings')}>
                 <span className="nav-icon">⚙</span> Settings
-              </button>
-              <button className="nav-btn" onClick={() => console.log('Navigate to About')}>
-                <span className="nav-icon">ℹ</span> About 0xnet
               </button>
             </div>
           </div>
 
           <div className="panel-section footer-section">
-            <div className="version-tag">v0.1.0-alpha</div>
+            <div className="version-tag">0XNET v0.1.0-alpha • P2P MODE</div>
           </div>
         </div>
       </aside>
@@ -186,15 +233,16 @@ export default function App() {
   const [newSessionName, setNewSessionName] = useState('')
   const [myDeviceID] = useState(getDeviceID())
   const [sessions, setSessions] = useState<SessionData[]>([])
+  const [devices, setDevices] = useState<DiscoveredDevice[]>([])
 
-  // Polling for sessions from the backend
+  // Polling for sessions and devices from the backend
   useEffect(() => {
-    const fetchSessions = async () => {
+    const fetchData = async () => {
       try {
-        const res = await fetch('http://localhost:8080/session/list');
-        if (res.ok) {
-          const data = await res.json();
-          // Map backend Session to SessionData
+        // Fetch Sessions
+        const sRes = await fetch('http://localhost:8080/session/list');
+        if (sRes.ok) {
+          const data = await sRes.json();
           const mapped = data.map((s: any) => ({
             id: s.id,
             name: s.name,
@@ -204,15 +252,38 @@ export default function App() {
           }));
           setSessions(mapped);
         }
+
+        // Fetch Devices
+        const dRes = await fetch('http://localhost:8080/devices');
+        if (dRes.ok) {
+          const data = await dRes.json();
+          setDevices(data);
+        }
       } catch (err) {
-        console.warn("Backend not yet available for session sync.");
+        console.warn("Backend not yet available for sync.");
       }
     };
 
-    fetchSessions();
-    const interval = setInterval(fetchSessions, 5000); // Poll every 5s
+    fetchData();
+    const interval = setInterval(fetchData, 4000); // Poll every 4s
     return () => clearInterval(interval);
   }, []);
+
+  const handleConnectIP = async (ip: string) => {
+    // Manual registration / probe of an IP
+    try {
+      await fetch('http://localhost:8080/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: `manual-${ip}`, address: ip })
+      });
+      // Force a refresh
+      const dRes = await fetch('http://localhost:8080/devices');
+      if (dRes.ok) setDevices(await dRes.json());
+    } catch (e) {
+      console.error("Failed to connect to IP:", e);
+    }
+  }
 
   const handleLogoClick = () => {
     setPanelOpen(false)
@@ -298,7 +369,8 @@ export default function App() {
                 activeSince: '00h 00m 00s',
                 members: [
                   { id: '1', name: 'You', avatar: '', status: 'online', role: 'host', isMe: true },
-                ]
+                ],
+                host: activeSession.host
               }}
               myDeviceID={myDeviceID}
               onLeave={() => setActiveSession(null)}
@@ -336,7 +408,13 @@ export default function App() {
           )}
         </AnimatePresence>
         
-        <SidePanel isOpen={panelOpen} onClose={() => setPanelOpen(false)} />
+        <SidePanel 
+          isOpen={panelOpen} 
+          onClose={() => setPanelOpen(false)} 
+          devices={devices}
+          onConnectIP={handleConnectIP}
+          myDeviceID={myDeviceID}
+        />
       </ErrorBoundary>
     </div>
   )

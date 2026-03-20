@@ -39,8 +39,11 @@ interface Participant {
 
 interface LiveSessionProps {
   sessionData: {
+    id: string
+    name: string
     members: Participant[]
     host?: string
+    activeSince?: string
   }
   myDeviceID: string
   onLeave: () => void
