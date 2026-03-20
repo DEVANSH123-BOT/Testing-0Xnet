@@ -90,16 +90,21 @@ func (s *Server) Start() {
 		}
 
 		devices := s.sessionDiscovery.GetDiscoveredDevices()
-		// Hash device IDs for privacy/security
-		hashedDevices := make([]*discovery.DiscoveredDevice, 0, len(devices))
+		
+		// Return devices with real IDs (ID hashing removed for easier debugging/transparency)
+		allDevices := make([]*discovery.DiscoveredDevice, 0, len(devices)+1)
+		
+		// Add "Me" first
+		allDevices = append(allDevices, &discovery.DiscoveredDevice{
+			DeviceID: s.deviceID + " (Me)",
+		})
+
 		for _, d := range devices {
-			hashedID := hashString(d.DeviceID)
-			hashedDevices = append(hashedDevices, &discovery.DiscoveredDevice{DeviceID: hashedID, Address: d.Address, Port: d.Port})
+			allDevices = append(allDevices, d)
 		}
-		meHashed := &discovery.DiscoveredDevice{DeviceID: hashString(s.deviceID) + " (Me)"}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(append([]*discovery.DiscoveredDevice{meHashed}, hashedDevices...))
+		json.NewEncoder(w).Encode(allDevices)
 	})
 
 	// Register device via HTTP (useful for browser clients or manual IP entry)

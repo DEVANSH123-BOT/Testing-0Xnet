@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -75,9 +76,9 @@ func incIP(ip net.IP) {
 }
 
 // probeIP checks if a 0Xnet app is running at the given IP:port
-// Returns the device ID string if found, or error if not
+// Returns the actual device ID string if found, or error if not
 func probeIP(client *http.Client, ip string, port int) (string, error) {
-	url := fmt.Sprintf("http://%s:%d/devices", ip, port)
+	url := fmt.Sprintf("http://%s:%d/whoami", ip, port)
 
 	resp, err := client.Get(url)
 	if err != nil {
@@ -89,13 +90,18 @@ func probeIP(client *http.Client, ip string, port int) (string, error) {
 		return "", fmt.Errorf("status %d", resp.StatusCode)
 	}
 
-	// This IP has a 0Xnet app running — use IP:port as device ID
-	deviceID := fmt.Sprintf("subnet-%s:%d", ip, port)
-	return deviceID, nil
+	var result struct {
+		DeviceID string `json:"deviceId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+
+	return "subnet-" + result.DeviceID, nil
 }
 
-// ScanSubnet sweeps all IPs in the local subnet to find 0Xnet devices
-func ScanSubnet(port int, selfIP string) []DiscoveredDevice {
+// ScanSubnet sweeps all IPs in the local subnet to find 0Xnet devices.
+func ScanSubnet(myPort int, selfIP string) []DiscoveredDevice {
 	_, cidr, err := getLocalIPAndSubnet()
 	if err != nil || cidr == "" {
 		// Fallback: assume /24 subnet from our own IP
@@ -114,41 +120,47 @@ func ScanSubnet(port int, selfIP string) []DiscoveredDevice {
 		return nil
 	}
 
-	// Fast HTTP client with short timeout for LAN probing
+	// Fast HTTP client with 1-2 second timeout for LAN probing
 	client := &http.Client{
-		Timeout: 500 * time.Millisecond,
+		Timeout: 1500 * time.Millisecond,
 	}
 
 	var mu sync.Mutex
 	var found []DiscoveredDevice
+
+	// Ports that might be used by 0Xnet instances
+	// In local dev, users often start multiple instances on 8080, 8081, 8082, etc.
+	targetPorts := []int{8080, 8081, 8082, 8083, 8084, 8085}
 
 	// Limit concurrency to 100 goroutines at a time
 	sem := make(chan struct{}, 100)
 	var wg sync.WaitGroup
 
 	for _, ip := range ips {
-		// Skip our own IP
-		if ip == selfIP {
-			continue
-		}
-
-		wg.Add(1)
-		go func(targetIP string) {
-			defer wg.Done()
-			sem <- struct{}{}        // acquire semaphore slot
-			defer func() { <-sem }() // release semaphore slot
-
-			deviceID, err := probeIP(client, targetIP, port)
-			if err == nil {
-				mu.Lock()
-				found = append(found, DiscoveredDevice{
-					DeviceID: deviceID,
-					Address:  targetIP,
-					Port:     port,
-				})
-				mu.Unlock()
+		for _, port := range targetPorts {
+			// Skip our own IP+PORT combination
+			if ip == selfIP && port == myPort {
+				continue
 			}
-		}(ip)
+
+			wg.Add(1)
+			go func(targetIP string, targetPort int) {
+				defer wg.Done()
+				sem <- struct{}{}        // acquire semaphore slot
+				defer func() { <-sem }() // release semaphore slot
+
+				deviceID, err := probeIP(client, targetIP, targetPort)
+				if err == nil {
+					mu.Lock()
+					found = append(found, DiscoveredDevice{
+						DeviceID: deviceID,
+						Address:  targetIP,
+						Port:     targetPort,
+					})
+					mu.Unlock()
+				}
+			}(ip, port)
+		}
 	}
 
 	wg.Wait()
